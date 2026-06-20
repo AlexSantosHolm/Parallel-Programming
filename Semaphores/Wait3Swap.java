@@ -1,36 +1,30 @@
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-public class WaitAndSwap33 {
+public class Oblig5 {
+    // Configuration for variable speed simulation
+    private static boolean variableSpeedThreads = true;
+    private static long variableSpeedRate = 300; // milliseconds
+    private static int extraSlowThreads = 2;
 
-        // Configuration for variable speed simulation
-        private static boolean variableSpeedThreads = true;
-        private static long variableSpeedRate = 300; // milliseconds
-        private static int extraSlowThreads = 2;
+    private final Semaphore[] waitSems = new Semaphore[3];
+    private final Semaphore orderSem = new Semaphore(0);
+    private final Semaphore countMutex = new Semaphore(1);
+    private int count = 0;
 
-        private Semaphore[] waitSems;
-        private Semaphore[] orderSems;
-        private Semaphore countMutex = new Semaphore(1);
-        private int count = 0;
-
-        public WaitAndSwap33(int maxThreads) {
-            // Initialize semaphores for all possible thread positions
-            waitSems = new Semaphore[maxThreads];
-            orderSems = new Semaphore[maxThreads];
-
-            for (int i = 0; i < maxThreads; i++) {
-                waitSems[i] = new Semaphore(0);
-                orderSems[i] = new Semaphore(0);
-            }
+    public Oblig5(int maxThreads) {
+        for (int i = 0; i < 3; i++) {
+            waitSems[i] = new Semaphore(0);
         }
+    }
 
         /**
-         * Main synchronization method implementing waitAndSwap3 semantics
+         * Main synchronization method implementing waitAndSwap3
          *
          * @param threadId The ID of the calling thread (for debugging)
          * @return The position of this thread in the sequence (for testing)
          */
-        public int waintAndSwap33(int threadId) throws InterruptedException {
+        public int waitAndSwap3(int threadId) throws InterruptedException {
             int myPosition;
 
             // Get exclusive access to the counter
@@ -43,11 +37,10 @@ public class WaitAndSwap33 {
             boolean isReleaser = (myPosition > 0) && (myPosition % 3 == 0);
 
             if (isReleaser) {
-                // Calculate the positions of threads to release in previous group
-                int releaseGroup = myPosition / 3 - 1;
-                int pos3 = releaseGroup * 3 + 2;
-                int pos2 = releaseGroup * 3 + 1;
-                int pos1 = releaseGroup * 3;
+
+                int pos3 = 2;
+                int pos2 = 1;
+                int pos1 = 0;
 
                 debugPrintln("Thread " + threadId + " (position " + myPosition + ") is a releaser thread, releasing previous group in specified order");
 
@@ -56,36 +49,27 @@ public class WaitAndSwap33 {
                 waitSems[pos3].release();  // Release the 3rd thread from previous group
 
                 // Wait for thread 3 to signal it's done before releasing thread 2
-                orderSems[myPosition].acquire();
+                orderSem.acquire();
 
                 debugPrintln("Thread " + threadId + " releasing thread at position " + pos2);
                 waitSems[pos2].release();  // Release the 2nd thread from previous group
 
                 // Wait for thread 2 to signal it's done before releasing thread 1
-                orderSems[myPosition].acquire();
+                orderSem.acquire();
 
                 debugPrintln("Thread " + threadId + " releasing thread at position " + pos1);
                 waitSems[pos1].release();  // Release the 1st thread from previous group
+                orderSem.acquire();
             }
             countMutex.release();
 
             // Wait until this thread is released by a future thread
+            int myPosInGroup = myPosition % 3;
             debugPrintln("Thread " + threadId + " (position " + myPosition + ") waiting...");
-            waitSems[myPosition].acquire();
+            waitSems[myPosInGroup].acquire();
             debugPrintln("Thread " + threadId + " (position " + myPosition + ") released!");
 
-            // Perform ordered execution based on position within the group
-            int myPosInGroup = myPosition % 3;
-
-            // If we're the 3rd ord 2nd thread in a group
-            if (myPosInGroup == 2 || myPosInGroup == 1) {
-                // Signal the releaser that we're done so it can release next
-                int myGroup = myPosition / 3;
-                int releaserPos = (myGroup + 1) * 3;
-                if (releaserPos < orderSems.length) {
-                    orderSems[releaserPos].release();
-                }
-            }
+            orderSem.release();
             return myPosition;
         }
 
@@ -95,28 +79,17 @@ public class WaitAndSwap33 {
         public void releaseLastGroup(int numThreads) throws InterruptedException {
             int numFullGroups = numThreads / 3;
             int lastGroupIndex = numFullGroups - 1;
-            int lastGroupStart = lastGroupIndex * 3; // First position in the last group
 
             debugPrintln("Special releaser handling the last group: group index " + lastGroupIndex +
-                     ", starting at position " + lastGroupStart);
+                     ", starting at position " + lastGroupIndex);
 
-            // Make sure we don't try to release threads that have already been released
-            if (lastGroupStart + 2 >= 0 && lastGroupStart + 2 < waitSems.length) {
-                debugPrintln("Special releaser releasing thread at position " + (lastGroupStart + 2));
-                waitSems[lastGroupStart + 2].release(); // Release the 3rd thread in last group
+            waitSems[2].release();
+            orderSem.acquire();
 
-                orderSems[numThreads].acquire();
+            waitSems[1].release();
+            orderSem.acquire();
 
-                debugPrintln("Special releaser releasing thread at position " + (lastGroupStart + 1));
-                waitSems[lastGroupStart + 1].release(); // Release the 2nd thread in last group
-
-                orderSems[numThreads].acquire();
-
-                debugPrintln("Special releaser releasing thread at position " + lastGroupStart);
-                waitSems[lastGroupStart].release(); // Release the 1st thread in last group
-            } else {
-                debugPrintln("No complete groups to release by special releaser");
-            }
+            waitSems[0].release();
         }
 
     // For debug printing with timestamp
@@ -127,7 +100,7 @@ public class WaitAndSwap33 {
 
     // Added method for enhanced debug printing
     public static void debugPrintln(int id, int iteration, int step, String message) {
-        System.out.println("[" + System.currentTimeMillis() % 10000 + "] Thread-" + id + 
+        System.out.println("[" + System.currentTimeMillis() % 10000 + "] Thread-" + id +
                            " Iter-" + iteration + " Step-" + step + ": " + message);
     }
 
@@ -148,10 +121,10 @@ public class WaitAndSwap33 {
 
     // Test class that demonstrates the waitAndSwap3 primitive
     static class TestThread extends Thread {
-        private final WaitAndSwap33 synchronizer;
+        private final Oblig5 synchronizer;
         private final int id;
 
-        public TestThread(WaitAndSwap33 synchronizer, int id) {
+        public TestThread(Oblig5 synchronizer, int id) {
             this.synchronizer = synchronizer;
             this.id = id;
             setName("Thread-" + id);
@@ -164,7 +137,7 @@ public class WaitAndSwap33 {
                 variSpeed(id, 1);
                 debugPrintln("Thread " + id + " started");
 
-                int position = synchronizer.waintAndSwap33(id);
+                int position = synchronizer.waitAndSwap3(id);
                 debugPrintln("Thread " + id + " completed waitAndSwap3 (was position " + position + ")");
 
                 variSpeed(id, 2);
@@ -211,7 +184,7 @@ public class WaitAndSwap33 {
                    ", variableSpeedRate=" + variableSpeedRate + 
                    ", extraSlowThreads=" + extraSlowThreads);
 
-        final WaitAndSwap33 synchronizer = new WaitAndSwap33(numThreads + 1); // +1 for the extra thread
+        final Oblig5 synchronizer = new Oblig5(numThreads + 1); // +1 for the extra thread
         Thread[] threads = new Thread[numThreads];
         debugPrintln("Starting test with " + numThreads + " threads");
 
